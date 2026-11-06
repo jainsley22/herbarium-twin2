@@ -16,11 +16,11 @@ from pathlib import Path
 db.db_init()
 
 st.set_page_config(
-    page_title="Herbarium Twin",
+    page_title="Herbarium Twin 2",
     layout="wide",
 )
 
-st.title("Herbarium Twin")
+st.title("Herbarium Twin 2")
 st.write("AI-assisted herbarium inventory system")
 
 
