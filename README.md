@@ -18,8 +18,8 @@ AI-assisted metadata from box photos via Gemini vision, editable fields, local S
 ### 1. Clone the repo and enter the folder
 
 ```bash
-git clone https://github.com/atchaya87/herbarium-twin
-cd herbarium-twin
+git clone https://github.com/jainsley22/herbarium-twin2
+cd herbarium-twin2
 ```
 
 ### 2. Create and activate a virtual environment
@@ -67,7 +67,7 @@ The app will open at `http://localhost:8501`.
 ## Project Structure
 
 ```
-herbarium_twin/
+herbarium_twin2/
 ├── runnable.py       # Streamlit app (UI, tabs, save logic)
 ├── ai_vision.py       # Gemini vision analysis
 ├── db.py               # SQLite database functions
