@@ -1,5 +1,12 @@
+
 import sqlite3
 from datetime import datetime
+
+import json
+from pathlib import Path
+
+import csv
+import io
 
 DB_NAME = "herbarium_database.db"
 
@@ -21,7 +28,7 @@ def db_init():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS boxes (
-            box_id TEXT PRIMARY KEY,
+            unit_id TEXT PRIMARY KEY,
 
             current_location TEXT,
             collection_area TEXT,
@@ -53,10 +60,9 @@ def db_init():
     conn.close()
 
 
-
-def get_next_box_id():
+def get_next_unit_id():
     """
-    Generates the next box ID.
+    Generates the next unit ID.
     Example:
     HB001
     HB002
@@ -66,9 +72,9 @@ def get_next_box_id():
     cursor = conn.cursor()
 
     cursor.execute("""
-        SELECT box_id 
+        SELECT unit_id
         FROM boxes
-        ORDER BY box_id DESC
+        ORDER BY unit_id DESC
         LIMIT 1
     """)
 
@@ -89,10 +95,9 @@ def get_next_box_id():
         return "HB001"
 
 
-
-def box_id_exists(box_id):
+def unit_id_exists(unit_id):
     """
-    Check whether a box already exists.
+    Check whether a unit already exists.
     """
 
     conn = get_connection()
@@ -100,11 +105,11 @@ def box_id_exists(box_id):
 
     cursor.execute(
         """
-        SELECT 1 
-        FROM boxes 
-        WHERE box_id = ?
+        SELECT 1
+        FROM boxes
+        WHERE unit_id = ?
         """,
-        (box_id,)
+        (unit_id,)
     )
 
     exists = cursor.fetchone() is not None
@@ -112,7 +117,6 @@ def box_id_exists(box_id):
     conn.close()
 
     return exists
-
 
 
 def save_box(data):
@@ -127,7 +131,7 @@ def save_box(data):
 
     cursor.execute("""
         INSERT INTO boxes (
-            box_id,
+            unit_id,
             current_location,
             collection_area,
             material_type,
@@ -150,7 +154,7 @@ def save_box(data):
 
     """, (
 
-        data["box_id"],
+        data["unit_id"],
         data["current_location"],
         data["collection_area"],
         data["material_type"],
@@ -174,7 +178,6 @@ def save_box(data):
     conn.close()
 
 
-
 def get_all_boxes():
     """
     Retrieve all inventory records.
@@ -196,8 +199,7 @@ def get_all_boxes():
     return rows
 
 
-
-def get_box(box_id):
+def get_box(unit_id):
     """
     Retrieve one box.
     """
@@ -208,11 +210,106 @@ def get_box(box_id):
     cursor.execute("""
         SELECT *
         FROM boxes
-        WHERE box_id = ?
-    """, (box_id,))
+        WHERE unit_id = ?
+    """, (unit_id,))
 
     row = cursor.fetchone()
 
     conn.close()
 
     return row
+
+
+# Export .json
+def export_box_json(unit_id):
+    """
+    Export the complete saved database record
+    for one herbarium box as a JSON file.
+    """
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT *
+        FROM boxes
+        WHERE unit_id = ?
+    """, (unit_id,))
+
+    row = cursor.fetchone()
+
+    # Get database field names
+    columns = [description[0] for description in cursor.description]
+
+    conn.close()
+
+    if row is None:
+        return None
+
+    # Convert complete database record into dictionary
+    box_data = dict(zip(columns, row))
+
+    # Add export timestamp
+    box_data["exported_at"] = datetime.now().isoformat(
+        timespec="seconds"
+    )
+
+    # Create JSON export folder
+    export_folder = Path(__file__).resolve().parent / "json_exports"
+    export_folder.mkdir(parents=True, exist_ok=True)
+
+    # Create JSON file
+    export_path = export_folder / f"{unit_id}.json"
+
+    with open(export_path, "w", encoding="utf-8") as file:
+        json.dump(
+            box_data,
+            file,
+            indent=4,
+            ensure_ascii=False
+        )
+
+    return export_path
+
+
+def export_boxes_csv():
+    """
+    Export all saved herbarium box records as CSV.
+
+    Includes every column currently stored in the boxes table.
+    """
+
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT *
+            FROM boxes
+            ORDER BY date_inventoried DESC
+        """)
+
+        # Get all database column names
+        columns = [
+            description[0]
+            for description in cursor.description
+        ]
+
+        rows = cursor.fetchall()
+
+        # Create CSV in memory
+        output = io.StringIO(newline="")
+
+        writer = csv.writer(output)
+
+        # Write column headings
+        writer.writerow(columns)
+
+        # Write all saved records
+        writer.writerows(rows)
+
+        return output.getvalue()
+
+    finally:
+        conn.close()
