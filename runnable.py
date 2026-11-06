@@ -1,10 +1,12 @@
-﻿import ai_vision
+
+import ai_vision
 import streamlit as st
 import os
-from PIL import Image
+from PIL import Image, ImageOps
 
 import db
 import qr_tools
+from pathlib import Path
 
 
 # -----------------------------
@@ -39,15 +41,15 @@ tab1, tab2 = st.tabs(
 # ==================================================
 
 with tab1:
-    st.header("Create Herbarium Box Record")
+    st.header("Create Herbarium Unit Record")
 
     # -----------------------------
     # Basic information
     # -----------------------------
 
-    box_id = st.text_input(
-        "Box ID",
-        value=db.get_next_box_id(),
+    unit_id = st.text_input(
+        "Unit ID",
+        value=db.get_next_unit_id(),
     )
 
     location = st.text_input(
@@ -64,7 +66,7 @@ with tab1:
     st.subheader("Upload Images")
 
     uploaded_files = st.file_uploader(
-        "Upload herbarium box photos",
+        "Upload herbarium unit photos",
         type=["jpg", "jpeg", "png"],
         accept_multiple_files=True,
     )
@@ -82,7 +84,7 @@ with tab1:
 
             temp_path = os.path.join(
                 "captured_images",
-                f"{box_id}_{i}.jpg",
+                f"{unit_id}_{i}.jpg",
             )
 
             img.save(temp_path)
@@ -100,12 +102,12 @@ with tab1:
 
         if (
             "ai_results" not in st.session_state
-            or st.session_state.get("last_box") != box_id
+            or st.session_state.get("last_unit") != unit_id
         ):
             with st.spinner(":robot_face: AI analyzing herbarium images..."):
                 try:
                     st.session_state.ai_results = ai_vision.analyze_box_images(image_paths)
-                    st.session_state.last_box = box_id
+                    st.session_state.last_unit = unit_id
                 except Exception as e:
                     st.error(f"AI failed: {e}")
 
@@ -182,14 +184,14 @@ with tab1:
     # Save
     # -----------------------------
 
-    if st.button(":floppy_disk: Save Herbarium Box"):
+    if st.button(":floppy_disk: Save Herbarium Unit"):
         if not location:
             st.error("Current location is required.")
-        elif db.box_id_exists(box_id):
-            st.error("Box ID already exists.")
+        elif db.unit_id_exists(unit_id):
+            st.error("Unit ID already exists.")
         else:
             record = {
-                "box_id": box_id,
+                "unit_id": unit_id,
                 "current_location": location,
                 "collection_area": collection_area,
                 "material_type": material_type,
@@ -208,9 +210,9 @@ with tab1:
             }
 
             db.save_box(record)
-            qr_path = qr_tools.generate_box_qr(box_id, location)
-            st.success(f"Saved {box_id}")
-            st.image(qr_path, caption="Box QR Code")
+            qr_path = qr_tools.generate_box_qr(unit_id, location)
+            st.success(f"Saved {unit_id}")
+            st.image(qr_path, caption="Unit QR Code")
 
 
 # ==================================================
@@ -222,14 +224,134 @@ with tab2:
 
     boxes = db.get_all_boxes()
 
-    if not boxes:
-        st.info("No boxes inventoried yet.")
-    else:
-        for box in boxes:
-            with st.expander(f":package: {box[0]}"):
-                st.write("Location:", box[1])
-                st.write("Material:", box[3])
-                st.write("Summary:", box[12])
+    # ==================================
+    # EXPORT COMPLETE DATABASE TO CSV
+    # ==================================
 
-                if box[14]:
-                    st.image(box[14].split(",")[0])
+    st.subheader("Export Collection Database")
+
+    csv_data = db.export_boxes_csv()
+
+    st.download_button(
+        label="Download Complete Collection as CSV",
+        data=csv_data,
+        file_name="herbarium_collection_export.csv",
+        mime="text/csv",
+        key="download_complete_collection_csv"
+    )
+
+    st.divider()
+
+    if not boxes:
+        st.info("No units inventoried yet.")
+
+    else:
+        for unit in boxes:
+            unit_id = unit[0]
+
+            with st.expander(f":package: {unit_id}"):
+
+                st.write("Location:", unit[1])
+                st.write("Material:", unit[3])
+                st.write("Summary:", unit[12])
+
+                # Display associated images
+                if unit[14]:
+
+                    image_paths = unit[14].split(",")
+
+                    columns = st.columns(3)
+
+                    for i, image_path in enumerate(image_paths):
+
+                        # Clean image path
+                        image_path = image_path.strip().replace("\\", "/")
+
+                        # Extract filename
+                        image_filename = Path(image_path).name
+
+                        # Find image inside captured_images folder
+                        full_path = (
+                            Path(__file__).resolve().parent
+                            / "captured_images"
+                            / image_filename
+                        )
+
+                        if full_path.exists():
+
+                            with Image.open(full_path) as img:
+
+                                # Correct image orientation
+                                img = ImageOps.exif_transpose(img)
+
+                                # Display image
+                                with columns[i % 3]:
+                                    st.image(
+                                        img,
+                                        use_container_width=True
+                                    )
+
+                        else:
+                            st.warning(
+                                f"Image not found: {image_filename}"
+                            )
+
+                # ==================================
+                # QR CODE DOWNLOAD
+                # ==================================
+
+                st.divider()
+
+                st.subheader("Download Unit QR Code")
+
+                qr_folder = (
+                    Path(__file__).resolve().parent
+                    / "qr_codes"
+                )
+
+                qr_path = qr_folder / f"{unit_id}.png"
+
+                if qr_path.exists():
+
+                    with open(qr_path, "rb") as file:
+
+                        st.download_button(
+                            label="Download QR Code",
+                            data=file.read(),
+                            file_name=f"{unit_id}_QR.png",
+                            mime="image/png",
+                            key=f"qr_download_{unit_id}"
+                        )
+
+                    st.image(
+                        str(qr_path),
+                        caption=f"QR Code: {unit_id}",
+                        width=150
+                    )
+
+                else:
+                    st.warning(
+                        f"QR code not found for {unit_id}."
+                    )
+
+                # ==================================
+                # JSON EXPORT
+                # ==================================
+
+                st.divider()
+
+                st.subheader("Export Collection Record")
+
+                json_path = db.export_box_json(unit_id)
+
+                if json_path:
+
+                    with open(json_path, "rb") as file:
+
+                        st.download_button(
+                            label="Download Complete JSON Record",
+                            data=file.read(),
+                            file_name=f"{unit_id}.json",
+                            mime="application/json",
+                            key=f"json_{unit_id}"
+                        )
