@@ -1,3 +1,4 @@
+
 import json
 import os
 
@@ -5,7 +6,15 @@ from google import genai
 from google.genai import types
 
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+# Gemini configuration - change if using a different model
+GEMINI_MODEL = "gemini-3.5-flash-lite"
+
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    http_options=types.HttpOptions(
+        api_version="v1beta"
+    )
+)
 
 
 def load_image_bytes(image_path):
@@ -20,10 +29,15 @@ def analyze_box_images(image_paths):
     Returns:
         dictionary of AI-generated metadata
     """
+
+    if not os.getenv("GEMINI_API_KEY"):
+        raise ValueError("GEMINI_API_KEY is missing.")
+
     image_parts = []
 
     for path in image_paths:
         image_bytes = load_image_bytes(path)
+
         image_parts.append(
             types.Part.from_bytes(
                 data=image_bytes,
@@ -72,17 +86,18 @@ Keep responses concise.
 """
 
     response = client.models.generate_content(
-        model="gemini-flash-lite-latest",
+        model=GEMINI_MODEL,
         contents=[prompt, *image_parts],
         config=types.GenerateContentConfig(
             response_mime_type="application/json"
         ),
     )
 
-    result_text = response.text.strip()
+    result_text = (response.text or "").strip()
 
     try:
         result = json.loads(result_text)
+
     except json.JSONDecodeError:
         result = {
             "collection_area": "Unknown",
@@ -94,7 +109,7 @@ Keep responses concise.
             "condition": "Unknown",
             "processing_status": "Unknown",
             "priority": "Unknown",
-            "ai_summary": result_text,
+            "ai_summary": result_text or "No response received.",
             "ai_confidence_notes": "AI output was not formatted correctly.",
         }
 
